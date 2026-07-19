@@ -11,13 +11,15 @@ Project applies a Hubbard U correction (GGA+U) only to a specific list of
 transition metals with known self-interaction problems: Fe, Mn, Co, Cr,
 Ni, V. Ce is NOT on that list -- confirmed empirically here, since all 4
 CeO2 entries in this dataset come back tagged plain GGA with no
-Hubbard-corrected alternative available. That matters: Ce 4f electrons
-are a textbook severe self-interaction-error case, and this dataset's
-plain-GGA CeO2 entries range from 0.0 eV (predicted as a metal) to 2.15
-eV, against an experimental range of 2.6-3.9 eV -- a larger, partly
-qualitative failure, not just the "typical" ~40% quantitative one.
-Tracking energy_type per entry lets the rest of this repo report all of
-this honestly instead of treating every entry as equally reliable.
+Hubbard-corrected alternative available. Tracking energy_type per entry
+lets the rest of this repo report all of this honestly instead of
+treating every entry as equally reliable.
+
+Elastic modulus (bulk/shear) coverage is much sparser than band gap or
+formation energy -- elastic tensor calculations are expensive and were
+only run for a minority of Materials Project entries. Missing values are
+left as NaN and reported explicitly (see build_dataset.py), never
+silently dropped or imputed.
 """
 
 import os
@@ -32,6 +34,8 @@ SUMMARY_FIELDS = [
     "density",
     "symmetry",
     "is_stable",
+    "bulk_modulus",
+    "shear_modulus",
 ]
 
 
@@ -43,11 +47,29 @@ def _get_api_key(api_key=None):
     return key
 
 
+def _extract_vrh(value):
+    """
+    bulk_modulus/shear_modulus may come back as a plain float, or as a
+    nested object/dict with voigt/reuss/vrh sub-values, depending on the
+    API version. Handle both without guessing wrong and crashing.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, dict):
+        return value.get("vrh", value.get("voigt"))
+    vrh = getattr(value, "vrh", None)
+    if vrh is not None:
+        return vrh
+    return getattr(value, "voigt", None)
+
+
 def search_formula(formula: str, api_key: str = None) -> pd.DataFrame:
     """
     Returns one row per polymorph/entry matching `formula`, with summary
-    properties and the DFT methodology (energy_type: GGA / GGA+U / r2SCAN,
-    plus the full list of available_functionals per material) merged in.
+    properties, elastic moduli (where computed), and the DFT methodology
+    (energy_type: GGA / GGA+U / r2SCAN, plus available_functionals) merged in.
     """
     key = _get_api_key(api_key)
 
@@ -65,6 +87,8 @@ def search_formula(formula: str, api_key: str = None) -> pd.DataFrame:
                 "space_group_symbol": d.symmetry.symbol if d.symmetry else None,
                 "crystal_system": str(d.symmetry.crystal_system) if d.symmetry else None,
                 "is_stable": d.is_stable,
+                "bulk_modulus_GPa": _extract_vrh(d.bulk_modulus),
+                "shear_modulus_GPa": _extract_vrh(d.shear_modulus),
             })
 
         df = pd.DataFrame(rows)

@@ -18,7 +18,15 @@ print()
 print("DFT methodology breakdown:")
 print(df["dft_run_type"].value_counts(dropna=False))
 print()
-print("Data completeness (% non-null per column):")
+print("Data completeness (% non-null per column, overall):")
 print((df.notna().mean() * 100).round(1))
+print()
+print("Elastic modulus coverage BY MATERIAL (bulk_modulus_GPa non-null):")
+for formula in TARGET_FORMULAS:
+    sub = df[df["formula_pretty"] == formula]
+    n_total = len(sub)
+    n_have = sub["bulk_modulus_GPa"].notna().sum()
+    pct = 100 * n_have / n_total if n_total else 0
+    print(f"  {formula}: {n_have}/{n_total} entries ({pct:.0f}%)")
 print()
 print(f"Saved to {out_path}")
