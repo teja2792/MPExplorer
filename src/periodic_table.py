@@ -2,11 +2,14 @@
 periodic_table.py
 
 Builds a full periodic-table-shaped plotly figure, colored by elemental
-Pauling electronegativity (a real, standard, universally-available
-elemental property, distinct from the compound-specific DFT properties
-used elsewhere in this repo). The five elements actually present in this
+Pauling electronegativity. The five elements actually present in this
 repo's target compounds (O, Ti, Fe, Ce, Cu) are outlined so they're easy
 to spot against the full table.
+
+Text color is computed per-cell (black or white, whichever contrasts
+better against that cell's actual background color) rather than left as
+a single fixed color -- a fixed color is illegible against roughly half
+of a colorscale that spans from dark purple to bright yellow.
 
 Layout (period, group) is hand-coded rather than pulled from a library
 attribute, since it's fixed chemistry knowledge, not an API surface that
@@ -14,10 +17,9 @@ can shift between library versions.
 """
 
 import plotly.graph_objects as go
+import plotly.colors as pcolors
 from pymatgen.core.periodic_table import Element
 
-# (symbol, period, group) -- lanthanides/actinides placed in rows 9/10,
-# groups 4-17, the standard simplified textbook layout.
 _LAYOUT = [
     ("H", 1, 1), ("He", 1, 18),
     ("Li", 2, 1), ("Be", 2, 2), ("B", 2, 13), ("C", 2, 14), ("N", 2, 15), ("O", 2, 16), ("F", 2, 17), ("Ne", 2, 18),
@@ -40,45 +42,84 @@ _LAYOUT = [
     ("Bk", 10, 11), ("Cf", 10, 12), ("Es", 10, 13), ("Fm", 10, 14), ("Md", 10, 15), ("No", 10, 16), ("Lr", 10, 17),
 ]
 
+NO_DATA_COLOR = "#D9D9D9"
+
+
+def _text_color_for_background(rgb_str):
+    """rgb_str like 'rgb(68, 1, 84)'. Returns 'black' or 'white', whichever
+    contrasts better, using standard relative-luminance weighting."""
+    nums = rgb_str.replace("rgb(", "").replace(")", "").split(",")
+    r, g, b = [float(n) for n in nums]
+    luminance = 0.299 * r + 0.587 * g + 0.114 * b
+    return "black" if luminance > 140 else "white"
+
 
 def build_periodic_table_figure(highlight_elements=None):
     highlight_elements = set(highlight_elements or [])
 
-    symbols, xs, ys, values, line_widths, line_colors = [], [], [], [], [], []
+    raw = []
     for symbol, period, group in _LAYOUT:
         try:
-            X = Element(symbol).X  # Pauling electronegativity; None for some elements
+            X = Element(symbol).X
+            X = float(X) if X == X else None  # NaN check
         except Exception:
             X = None
+        raw.append((symbol, period, group, X))
+
+    valid_values = [x for *_, x in raw if x is not None]
+    x_min, x_max = min(valid_values), max(valid_values)
+
+    symbols, xs, ys, marker_colors, text_colors, line_widths, line_colors, hover = [], [], [], [], [], [], [], []
+    for symbol, period, group, X in raw:
         symbols.append(symbol)
         xs.append(group)
-        ys.append(-period)  # negative so period 1 renders at the top
-        values.append(X)
+        ys.append(-period)
+
+        if X is None:
+            marker_colors.append(NO_DATA_COLOR)
+            text_colors.append("black")
+            hover.append(f"{symbol}: no electronegativity data")
+        else:
+            norm = (X - x_min) / (x_max - x_min)
+            rgb = pcolors.sample_colorscale("Viridis", [norm], colortype="rgb")[0]
+            marker_colors.append(rgb)
+            text_colors.append(_text_color_for_background(rgb))
+            hover.append(f"{symbol}: electronegativity = {X:.2f}")
+
         is_highlighted = symbol in highlight_elements
         line_widths.append(3 if is_highlighted else 0.5)
-        line_colors.append("black" if is_highlighted else "lightgray")
+        line_colors.append("red" if is_highlighted else "lightgray")
 
     fig = go.Figure(go.Scatter(
         x=xs, y=ys, mode="markers+text",
         text=symbols, textposition="middle center",
+        textfont=dict(color=text_colors, size=13, family="Arial Black"),
         marker=dict(
-            symbol="square", size=32,
-            color=values, colorscale="Viridis",
-            colorbar=dict(title="Electronegativity\n(Pauling scale)"),
-            showscale=True,
+            symbol="square", size=34,
+            color=marker_colors,
             line=dict(width=line_widths, color=line_colors),
         ),
-        hovertext=[f"{s}: X={v}" if v is not None else f"{s}: no data" for s, v in zip(symbols, values)],
-        hoverinfo="text",
+        hovertext=hover, hoverinfo="text",
+    ))
+
+    # Dummy invisible trace purely to render a colorbar matching the scale above.
+    fig.add_trace(go.Scatter(
+        x=[None], y=[None], mode="markers",
+        marker=dict(
+            color=[x_min, x_max], colorscale="Viridis", showscale=True,
+            colorbar=dict(title="Electronegativity<br>(Pauling scale)"),
+            cmin=x_min, cmax=x_max,
+        ),
+        showlegend=False, hoverinfo="skip",
     ))
 
     fig.update_layout(
         title="Periodic table colored by electronegativity"
-              + (f"  (outlined: {', '.join(sorted(highlight_elements))} -- present in this repo's compounds)"
+              + (f"  (red outline: {', '.join(sorted(highlight_elements))} -- present in this repo's compounds)"
                  if highlight_elements else ""),
         xaxis=dict(visible=False),
         yaxis=dict(visible=False),
-        height=550,
+        height=600,
         plot_bgcolor="white",
     )
     return fig
