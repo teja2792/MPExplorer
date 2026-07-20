@@ -174,25 +174,6 @@ python src/band_gap_reference.py        # Phase 3: methodology comparison table
 streamlit run app.py                    # Phase 4: the full app
 pytest tests/test_mpexplorer.py -v      # Phase 5: test suite
 
-## Repository structure
-MPExplorer/
-├── app.py                          # Streamlit app: Search / Download / Visualize
-├── src/
-│   ├── mp_client.py                 # Materials Project API wrapper + methodology tracking
-│   ├── feature_engineering.py       # property-space feature matrix for PCA/UMAP/t-SNE
-│   ├── dimensionality_reduction.py  # PCA / t-SNE / UMAP
-│   ├── crystal_viewer.py            # 3D structure viewer (plotly, live API)
-│   ├── periodic_table.py            # periodic table heatmap
-│   └── band_gap_reference.py        # hand-curated DFT-vs-literature comparison
-├── scripts/
-│   ├── build_dataset.py             # pulls and saves data/mp_summary.csv
-│   └── test_*.py                    # standalone sanity-check scripts per phase
-├── tests/
-│   └── test_mpexplorer.py           # 13 tests: snapshot regression + live API (auto-skip)
-├── data/mp_summary.csv              # committed snapshot of the 77-entry pull
-├── results/                         # plots, exported comparison tables, structure HTML
-└── README.md
-
 ## References
 
 - [Materials Project API Documentation](https://docs.materialsproject.org/downloading-data/using-the-api)
